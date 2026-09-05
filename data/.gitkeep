@@ -1,0 +1,12 @@
+# Put mediassist_data/ here:
+#
+#   data/
+#     mediassist_data/
+#       patient_records/
+#       clinical_guidelines/
+#       drug_information/
+#       billing/
+#       hospital_policy/
+#       research_papers/
+#
+# This folder's contents (except this file) are git-ignored.
