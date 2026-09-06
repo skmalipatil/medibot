@@ -32,3 +32,5 @@ langchain-qdrant
 fastembed
 
 langchain-groq
+
+semantic-router

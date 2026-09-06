@@ -1,31 +1,31 @@
-"""medibot — /health router."""
-
-from __future__ import annotations
-
 from fastapi import APIRouter
+from qdrant_client import QdrantClient
+import sqlite3
+from backend.config import DB_PATH, QDRANT_HOST, QDRANT_PORT
 
-from backend import __version__
-from backend.config import settings
-from backend.utils.qdrant_helper import get_client
-
-router = APIRouter(tags=["health"])
-
+router = APIRouter()
 
 @router.get("/health")
-async def health() -> dict:
-    qdrant_ok = False
+def health():
+    # check Qdrant
     try:
-        get_client().get_collections()
-        qdrant_ok = True
-    except Exception:  # noqa: BLE001
-        qdrant_ok = False
+        client = QdrantClient(url=f"http://{QDRANT_HOST}:{QDRANT_PORT}")
+        client.get_collections()
+        qdrant_status = "connected"
+    except:
+        qdrant_status = "disconnected"
+
+    # check database
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.execute("SELECT 1")
+        conn.close()
+        db_status = "connected"
+    except:
+        db_status = "disconnected"
 
     return {
-        "success": True,
-        "data": {
-            "status": "ok",
-            "version": __version__,
-            "env": settings.app_env,
-            "qdrant": "up" if qdrant_ok else "down",
-        },
+        "status": "ok",
+        "qdrant": qdrant_status,
+        "database": db_status
     }

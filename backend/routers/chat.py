@@ -1,66 +1,77 @@
-"""
-medibot — /chat router.
+from semantic_router import Route
+from semantic_router.routers import SemanticRouter
+from semantic_router.encoders import HuggingFaceEncoder
+from backend.config import EMBEDDING_MODEL, SQL_RAG_ROLES
 
-Accepts a question, runs it through the RBAC-scoped hybrid RAG chain
-(and, later, the SQL chain for structured questions), returns an answer
-plus citations.
+from fastapi import APIRouter
+from pydantic import BaseModel
+from backend.chains.hybrid_rag import ask_medibot
+from backend.chains.sql_chain import sql_rag_chain
 
-TODO:
-  * route structured questions (billing / appointments) to sql_chain
-  * stream tokens (SSE) once hybrid_rag.generate is implemented
-"""
+router = APIRouter()
 
-from __future__ import annotations
+encoder = HuggingFaceEncoder(name=EMBEDDING_MODEL)
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field
+sql_route = Route(
+	name = "sql_route",
+	utterances = [
+		"How many claims were rejected?",
+		"Which equipment category has most open tickets?",
+		"What is the total approved amount for all claims?",
+		"How many tickets are still in progress?",
+		"What is total approved amount?",
+		"Which department has most claims?"
+		]
+	)
+	
+	
+rag_route = Route(
+	name = "rag_route",
+	utterances = [
+		"What is the ICU procedure for infection control?",
+		"What are the drugs available under Gastrointestinal & Endocrine Drugs?",
+		"What are the standard trement method for Type 2 Diabetes Mellitus?",
+		"what are the hr leave policy?",
+		"How do I submit a claim?"
+		]
+	)
+	
+routes = [sql_route, rag_route]
 
-from backend.chains import hybrid_rag
-from backend.routers.auth import get_current_principal
-from backend.utils.rbac import Principal, RBACError, resolve_target_collections
 
-router = APIRouter(prefix="/chat", tags=["chat"])
+sr = SemanticRouter(
+    encoder=encoder,
+    routes=routes,
+    auto_sync="local",   # store route vectors locally in memory
+)
 
 
 class ChatRequest(BaseModel):
-    message: str = Field(min_length=1, max_length=2000)
-    collections: list[str] | None = Field(
-        default=None,
-        description="Optional subset of collections to search; must be a "
-        "subset of the caller's allowed collections.",
-    )
+    question: str   # must be a string
+    role: str       # must be a string
 
-
-class ChatResponse(BaseModel):
-    success: bool = True
-    data: dict
-
-
-@router.post("", response_model=ChatResponse)
-async def chat(
-    body: ChatRequest,
-    principal: Principal = Depends(get_current_principal),
-) -> ChatResponse:
-    try:
-        targets = resolve_target_collections(principal, body.collections)
-    except RBACError as exc:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
-
-    try:
-        result = hybrid_rag.answer(principal, body.message, targets)
-    except NotImplementedError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_501_NOT_IMPLEMENTED,
-            detail="RAG chain not implemented yet (Phase 2)",
-        ) from exc
-
-    return ChatResponse(
-        data={
-            "answer": result.answer,
-            "used_collections": result.used_collections,
-            "sources": [
-                {"source": c.source, "collection": c.collection, "score": c.score}
-                for c in result.sources
-            ],
+def route_questions(questions: str, role: str) -> str:
+    if role not in SQL_RAG_ROLES:
+        return "rag_route"
+    else:
+        result = sr(questions)
+        if result.name is None:   
+            return "rag_route"
+        return result.name    
+		
+# ── Chat endpoint ─────────────────────────────────────────────
+@router.post("/chat")
+def chat(request: ChatRequest):
+    route = route_questions(request.question, request.role)
+    
+    if route == "sql_route":
+        answer = sql_rag_chain(request.question)
+        return {
+            "answer": answer,
+            "sources": [],
+            "retrieval_type": "sql_rag",
+            "role": request.role
         }
-    )
+    else:
+        result = ask_medibot(request.question, request.role)
+        return result
