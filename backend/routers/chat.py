@@ -3,10 +3,12 @@ from semantic_router.routers import SemanticRouter
 from semantic_router.encoders import HuggingFaceEncoder
 from backend.config import EMBEDDING_MODEL, SQL_RAG_ROLES
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from backend.chains.hybrid_rag import ask_medibot
 from backend.chains.sql_chain import sql_rag_chain
+
+from backend.utils.auth import get_current_user
 
 router = APIRouter()
 
@@ -48,7 +50,6 @@ sr = SemanticRouter(
 
 class ChatRequest(BaseModel):
     question: str   # must be a string
-    role: str       # must be a string
 
 def route_questions(questions: str, role: str) -> str:
     if role not in SQL_RAG_ROLES:
@@ -61,8 +62,9 @@ def route_questions(questions: str, role: str) -> str:
 		
 # ── Chat endpoint ─────────────────────────────────────────────
 @router.post("/chat")
-def chat(request: ChatRequest):
-    route = route_questions(request.question, request.role)
+def chat(request: ChatRequest, current_user: dict = Depends(get_current_user)):
+    role = current_user["role"]
+    route = route_questions(request.question, role)
     
     if route == "sql_route":
         answer = sql_rag_chain(request.question)
@@ -70,8 +72,8 @@ def chat(request: ChatRequest):
             "answer": answer,
             "sources": [],
             "retrieval_type": "sql_rag",
-            "role": request.role
+            "role": role
         }
     else:
-        result = ask_medibot(request.question, request.role)
+        result = ask_medibot(request.question, role)
         return result

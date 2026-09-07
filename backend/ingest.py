@@ -2,7 +2,7 @@ from pathlib import Path
 from docling.document_converter import DocumentConverter
 from docling.chunking import HybridChunker
 from transformers import AutoTokenizer
-from backend.config import COLLECTION_DIRS, EMBEDDING_MODEL, QDRANT_COLLECTION
+from backend.config import COLLECTION_DIRS, EMBEDDING_MODEL, QDRANT_COLLECTION, COLLECTION_ACCESS
 from langchain_qdrant import QdrantVectorStore, RetrievalMode
 from langchain_core.documents import Document
 from qdrant_client import QdrantClient
@@ -61,7 +61,9 @@ def embedding_of_chunks():
         docs = [Document(
             page_content=chunk["text"],
             metadata = {"source" : chunk["source"],
-                        "collection" : chunk["collection"]}
+                        "collection" : chunk["collection"],
+                        "access_roles": COLLECTION_ACCESS[chunk["collection"]]
+                        }
             ) for chunk in all_chunks
                 ]
 

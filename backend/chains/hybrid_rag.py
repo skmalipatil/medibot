@@ -14,11 +14,10 @@ from backend.utils.embedder import dense_embeddings, sparse_embeddings, rerank_m
 
 # ── Step 2: Build RBAC filter ─────────────────────────────────────────────────
 def get_rbac_filter(role: str):
-    allowed_collections = ROLE_ACCESS[role]
     rbac_filter = Filter(
         must = [FieldCondition(
-            key 	= "metadata.collection",
-            match 	= MatchAny(any = allowed_collections) 
+            key 	= "metadata.access_roles",
+            match 	= MatchAny(any = [role]) 
         )
         ]
     )
